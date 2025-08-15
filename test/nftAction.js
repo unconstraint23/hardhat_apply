@@ -17,7 +17,7 @@ describe('Starting NftActions', () => {
         const nftActionInfo = await nftActionContract.nftActions(nftActionId)
         console.log('nftActionInfo:', nftActionInfo)
 
-        const action = await nftActionContract.Action(0)
+        const action = await nftActionContract.nftActions(0)
         console.log('action:', action)
 
     })
