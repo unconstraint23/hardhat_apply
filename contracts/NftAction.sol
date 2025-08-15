@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
 pragma solidity ^0.8;
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-contract NftAction {
+contract NftAction is Initializable {
 
-    struct NftAction {
+    struct Action {
         address salter;
         uint256 duration;
         uint256 startPrice;
@@ -15,19 +16,23 @@ contract NftAction {
         // 最高出价者
 
         address highestBidder;
-
+        // 合约地址
         address nftContract;
-        // nft token id 合约地址
+        // nft token id 
         uint256 nftToken;
 
 
     }
-    mapping(uint256 => NftAction) public nftActions;
+    mapping(uint256 => Action) public nftActions;
     uint256 public nextNftActionId;
     address public admin;
-    constructor() {
+    // constructor() {
+    //     admin = msg.sender;
+    // }
+    function initialize() public initializer {
         admin = msg.sender;
     }
+
     // 创建卖品
     function createNftAction(
         uint256 _duration, 
@@ -38,7 +43,7 @@ contract NftAction {
         ) public {
             require(_duration > 1000 * 60, "duration must be greater than 0");
             require(_startPrice > 0, "startPrice must be greater than 0");
-        nftActions[nextNftActionId] = NftAction({
+        nftActions[nextNftActionId] = Action({
             salter: msg.sender,
             duration: _duration,
             startPrice: _startPrice,
@@ -53,7 +58,7 @@ contract NftAction {
     }
     // 买家操作
     function placeBid(uint256 _nftActionId) public payable {
-        NftAction storage nftAction = nftActions[_nftActionId];
+        Action storage nftAction = nftActions[_nftActionId];
         require(!nftAction.isEnd && block.timestamp < nftAction.startTime + nftAction.duration, "nftAction is end");
 
         require(msg.value > nftAction.highestBid && msg.value >= nftAction.startPrice, "bid must be greater than highestBid");
