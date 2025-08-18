@@ -4,9 +4,9 @@ const { expect } = require('chai')
 describe('NftActionsV2 upgrade', () => {
     /**
      * 步骤：
-     * 1. 部署NftActionV2合约
+     * 1. 部署NftAction合约
      * 2. 调用createNftAction
-     * 3. 升级NftAction合约
+     * 3. 升级NftAction合约--->NftActionV2
      * 4. 调用NftActionV2合约
 
      */

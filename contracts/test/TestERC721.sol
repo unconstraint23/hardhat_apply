@@ -13,15 +13,8 @@ contract TestERC721 is ERC721Enumerable, Ownable {
 
 
     
-    function mintNFT(address recipient, string memory uri) public onlyOwner {
-        uint256 tokenId = _nextTokenId;
-        _nextTokenId++;
-
-        // 铸造
-        _safeMint(recipient, tokenId);
-
-        // 保存元数据
-        _tokenURIs[tokenId] = uri;
+      function mint(address to, uint256 tokenId) external onlyOwner {
+        _mint(to, tokenId);
     }
 
     ///  查询 token 的元数据 URI

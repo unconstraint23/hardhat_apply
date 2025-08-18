@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
-pragma solidity ^0.8;
+pragma solidity ^0.8.22;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "hardhat/console.sol";
 
-contract NftAction is Initializable {
+contract NftAction is Initializable, UUPSUpgradeable {
+
 
     struct Action {
         address salter;
@@ -41,7 +46,7 @@ contract NftAction is Initializable {
         uint256 _nftToken
 
         ) public {
-            require(_duration > 1000 * 60, "duration must be greater than 0");
+            require(_duration >= 10, "duration must be greater than 0");
             require(_startPrice > 0, "startPrice must be greater than 0");
         nftActions[nextNftActionId] = Action({
             salter: msg.sender,
@@ -56,12 +61,32 @@ contract NftAction is Initializable {
         });
         nextNftActionId++;
     }
+
+    function _endNftAction(uint256 _nftActionId) internal {
+        Action storage nftAction = nftActions[_nftActionId];
+      
+         console.log(
+            "endAuction",
+            nftAction.startTime,
+            nftAction.duration,
+            block.timestamp
+        );
+        require(!nftAction.isEnd && block.timestamp >= nftAction.startTime + nftAction.duration, "nftAction is not end");
+
+        nftAction.isEnd = true;
+      
+        IERC721(nftAction.nftContract).safeTransferFrom(admin, nftAction.highestBidder, nftAction.nftToken);
+
+    }
+
     // 买家操作
     function placeBid(uint256 _nftActionId) public payable {
         Action storage nftAction = nftActions[_nftActionId];
         require(!nftAction.isEnd && block.timestamp < nftAction.startTime + nftAction.duration, "nftAction is end");
 
         require(msg.value > nftAction.highestBid && msg.value >= nftAction.startPrice, "bid must be greater than highestBid");
+       
+        // 将上一个买家的余额退还
         if(nftAction.highestBidder != address(0)) {
             payable(nftAction.highestBidder).transfer(nftAction.highestBid);
         }
@@ -69,6 +94,9 @@ contract NftAction is Initializable {
         nftAction.highestBid = msg.value;
         nftAction.highestBidder = msg.sender;
     }
-
+    function _authorizeUpgrade(address) internal view override {
+        // 只有管理员可以升级合约
+        require(msg.sender == admin, "Only admin can upgrade");
+    }
 
 }
