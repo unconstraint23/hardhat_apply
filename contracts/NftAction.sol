@@ -5,6 +5,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "hardhat/console.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
 contract NftAction is Initializable, UUPSUpgradeable {
 
@@ -25,19 +26,37 @@ contract NftAction is Initializable, UUPSUpgradeable {
         address nftContract;
         // nft token id 
         uint256 nftToken;
+        // 支付token地址
+        address tokenAddress;
 
 
     }
     mapping(uint256 => Action) public nftActions;
     uint256 public nextNftActionId;
     address public admin;
+        AggregatorV3Interface public priceETHFeed;
+
+    mapping(address => AggregatorV3Interface) public priceFeeds;
     // constructor() {
     //     admin = msg.sender;
     // }
     function initialize() public initializer {
         admin = msg.sender;
     }
-
+    function setPriceFeeds(address _priceAddr) public {
+        priceETHFeed = AggregatorV3Interface(_priceAddr);
+    }
+     function getChainlinkDataFeedLatestAnswer() public view returns (int) {
+        // prettier-ignore
+        (
+            /* uint80 roundId */,
+            int256 answer,
+            /*uint256 startedAt*/,
+            /*uint256 updatedAt*/,
+            /*uint80 answeredInRound*/
+        ) = priceETHFeed.latestRoundData();
+        return answer;
+    }
     // 创建卖品
     function createNftAction(
         uint256 _duration, 
@@ -57,12 +76,14 @@ contract NftAction is Initializable, UUPSUpgradeable {
             highestBid: 0,
             highestBidder: address(0),
             nftContract: _nftContract,
-            nftToken: _nftToken
+            nftToken: _nftToken,
+            tokenAddress: address(0)
+
         });
         nextNftActionId++;
     }
 
-    function _endNftAction(uint256 _nftActionId) internal {
+    function endNftAction(uint256 _nftActionId) external {
         Action storage nftAction = nftActions[_nftActionId];
       
          console.log(
@@ -74,14 +95,21 @@ contract NftAction is Initializable, UUPSUpgradeable {
         require(!nftAction.isEnd && block.timestamp >= nftAction.startTime + nftAction.duration, "nftAction is not end");
 
         nftAction.isEnd = true;
-      
-        IERC721(nftAction.nftContract).safeTransferFrom(admin, nftAction.highestBidder, nftAction.nftToken);
+        // nft转移到最高出价者
+        if(nftAction.highestBidder != address(0)) {
+            IERC721(nftAction.nftContract).safeTransferFrom(address(this), nftAction.highestBidder, nftAction.nftToken);
+        } else {
+            // 没有买家，nft转移到卖家
+            IERC721(nftAction.nftContract).safeTransferFrom(address(this), nftAction.salter, nftAction.nftToken);
+        }
 
     }
 
     // 买家操作
-    function placeBid(uint256 _nftActionId) public payable {
+    function placeBid(uint256 _nftActionId, uint256 amount,
+        address _tokenAddress) public payable {
         Action storage nftAction = nftActions[_nftActionId];
+        console.log("placeBid", nftAction.startTime, nftAction.duration, block.timestamp);
         require(!nftAction.isEnd && block.timestamp < nftAction.startTime + nftAction.duration, "nftAction is end");
 
         require(msg.value > nftAction.highestBid && msg.value >= nftAction.startPrice, "bid must be greater than highestBid");

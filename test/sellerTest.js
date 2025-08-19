@@ -14,7 +14,7 @@ async function main() {
     const [seller, buyer] = await ethers.getSigners();
     await deployments.fixture(["deployNftAction"]);
     const nftActionProxy = await deployments.get('NftActionProxy')
-    
+     const nftAction = await ethers.getContractAt("NftAction", nftActionProxy.address);
     const TestERC721 = await ethers.getContractFactory("TestERC721");
     const testERC721 = await TestERC721.deploy();
     await testERC721.waitForDeployment();
@@ -29,27 +29,25 @@ async function main() {
 
     const tokenId = 1;
    await testERC721.connect(seller).setApprovalForAll(nftActionProxy.address, true);
-
-    const nftAction = await ethers.getContractAt("NftAction", nftActionProxy.address);
-    console.log(nftAction, "nftAction")
+    
     await nftAction.createNftAction(
-        20n,
+        10,
         ethers.parseEther('0.01'),
         testERC721Address,
         tokenId,
     )
     const actionRes = await nftAction.nftActions(0)
-    console.log('actionRes:', actionRes)
+    console.log('拍卖创建成功:', actionRes)
 
     // 买家购买
-    await nftAction.connect(buyer).placeBid(tokenId, {
+    await nftAction.connect(buyer).placeBid(0, {
         value: ethers.parseEther('0.01'),
     })
     
     await new Promise((resolve) => setTimeout(resolve, 10 * 1000))
 
-   await nftAction.connect(seller)._endNftAction(tokenId)
-    const actionRes2 = await nftAction.nftActions(tokenId)
+   await nftAction.connect(seller).endNftAction(0)
+    const actionRes2 = await nftAction.nftActions(0)
     console.log('actionRes2:', actionRes2)
     expect(actionRes2.highestBidder).to.equal(buyer.address)
     expect(actionRes2.highestBid).to.equal(ethers.parseEther('0.01'))
