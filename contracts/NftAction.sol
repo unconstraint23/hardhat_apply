@@ -107,6 +107,23 @@ contract NftAction is Initializable, UUPSUpgradeable {
 
     }
 
+    function getPayValue(address _tokenAddress, uint256 amount) internal view returns (uint) {
+         uint payValue;
+        if(_tokenAddress == address(0)) {
+            amount = msg.value;
+
+            payValue = amount * uint(getChainlinkDataFeedLatestAnswer(address(0)));
+
+        } else {
+            payValue = amount * uint(getChainlinkDataFeedLatestAnswer(_tokenAddress));
+        }
+        return payValue;
+    }
+
+    /**
+     * 
+     ETH 出价 → 因为 ETH 没有合约地址，就统一约定 _tokenAddress == address(0) 来表示「这是原生 ETH 出价」
+     */
     // 买家操作
     function placeBid(
         uint256 _nftActionId, 
@@ -114,20 +131,46 @@ contract NftAction is Initializable, UUPSUpgradeable {
         address _tokenAddress
         ) public payable {
         Action storage nftAction = nftActions[_nftActionId];
-        // 判断是否是ERC20资产
-        
+
+       
 
         require(!nftAction.isEnd && block.timestamp < nftAction.startTime + nftAction.duration, "nftAction is end");
+      
+        
+        uint payValue = getPayValue(_tokenAddress, amount);
+        uint highestBid = getPayValue(nftAction.tokenAddress, nftAction.highestBid);
+        uint startPrice = getPayValue(nftAction.tokenAddress, nftAction.startPrice);
+        require(payValue > highestBid && payValue >= startPrice, "bid must be greater than highestBid");
+        if(_tokenAddress != address(0)) {
+            // 检查合约是否有足够的 ERC20 资产
+            uint shouldPayValue = getPayValue(_tokenAddress, IERC20(_tokenAddress).balanceOf(address(this)));
 
-        require(msg.value > nftAction.highestBid && msg.value >= nftAction.startPrice, "bid must be greater than highestBid");
-       
-        // 将上一个买家的余额退还
-        if(nftAction.highestBidder != address(0)) {
-            payable(nftAction.highestBidder).transfer(nftAction.highestBid);
+            require(shouldPayValue >= payValue, "insufficient balance in current contract");
+            IERC20(_tokenAddress).transferFrom(msg.sender, address(this), payValue);
+
+
         }
+
+        if(nftAction.highestBid > 0) {
+            // 判断是否是ERC20资产
+            if (_tokenAddress == address(0)) {
+                payable(nftAction.highestBidder).transfer(nftAction.highestBid);
+
+            } else {
+                IERC20(_tokenAddress).transfer(nftAction.highestBidder, nftAction.highestBid);
+
+            }
+        }
+        
+
+
+
+       
 
         nftAction.highestBid = msg.value;
         nftAction.highestBidder = msg.sender;
+        nftAction.tokenAddress = _tokenAddress;
+
     }
     function _authorizeUpgrade(address) internal view override {
         // 只有管理员可以升级合约
