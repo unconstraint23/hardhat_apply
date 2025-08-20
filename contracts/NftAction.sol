@@ -43,10 +43,12 @@ contract NftAction is Initializable, UUPSUpgradeable {
     function initialize() public initializer {
         admin = msg.sender;
     }
-    function setPriceFeeds(address _priceAddr) public {
-        priceETHFeed = AggregatorV3Interface(_priceAddr);
+    // 相当于记录不同货币的汇率
+    function setPriceFeeds(address _tokenAddress, address _priceAddr) public {
+        priceFeeds[_tokenAddress] = AggregatorV3Interface(_priceAddr);
     }
-     function getChainlinkDataFeedLatestAnswer() public view returns (int) {
+     function getChainlinkDataFeedLatestAnswer(address _tokenAddress) public view returns (int) {
+        AggregatorV3Interface priceFeed = priceFeeds[_tokenAddress];
         // prettier-ignore
         (
             /* uint80 roundId */,
@@ -54,7 +56,7 @@ contract NftAction is Initializable, UUPSUpgradeable {
             /*uint256 startedAt*/,
             /*uint256 updatedAt*/,
             /*uint80 answeredInRound*/
-        ) = priceETHFeed.latestRoundData();
+        ) = priceFeed.latestRoundData();
         return answer;
     }
     // 创建卖品
@@ -106,10 +108,15 @@ contract NftAction is Initializable, UUPSUpgradeable {
     }
 
     // 买家操作
-    function placeBid(uint256 _nftActionId, uint256 amount,
-        address _tokenAddress) public payable {
+    function placeBid(
+        uint256 _nftActionId, 
+        uint256 amount,
+        address _tokenAddress
+        ) public payable {
         Action storage nftAction = nftActions[_nftActionId];
-        console.log("placeBid", nftAction.startTime, nftAction.duration, block.timestamp);
+        // 判断是否是ERC20资产
+        
+
         require(!nftAction.isEnd && block.timestamp < nftAction.startTime + nftAction.duration, "nftAction is end");
 
         require(msg.value > nftAction.highestBid && msg.value >= nftAction.startPrice, "bid must be greater than highestBid");
