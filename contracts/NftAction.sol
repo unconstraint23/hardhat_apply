@@ -67,8 +67,10 @@ contract NftAction is Initializable, UUPSUpgradeable {
         uint256 _nftToken
 
         ) public {
+            require(msg.sender == admin, "Only admin can create auctions");
             require(_duration >= 10, "duration must be greater than 0");
             require(_startPrice > 0, "startPrice must be greater than 0");
+            IERC721(_nftContract).safeTransferFrom(msg.sender, address(this), _nftToken);
         nftActions[nextNftActionId] = Action({
             salter: msg.sender,
             duration: _duration,
