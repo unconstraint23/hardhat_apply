@@ -4,10 +4,12 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/interfaces/IERC721Receiver.sol";
 import "hardhat/console.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
-contract NftAction is Initializable, UUPSUpgradeable {
+contract NftAction is Initializable, UUPSUpgradeable, IERC721Receiver {
+
 
 
     struct Action {
@@ -34,14 +36,21 @@ contract NftAction is Initializable, UUPSUpgradeable {
     mapping(uint256 => Action) public nftActions;
     uint256 public nextNftActionId;
     address public admin;
-        AggregatorV3Interface public priceETHFeed;
+    address public seller;
+     address public feeRecipient;
+    uint256 public feeRate;
+    AggregatorV3Interface public priceETHFeed;
 
     mapping(address => AggregatorV3Interface) public priceFeeds;
     // constructor() {
     //     admin = msg.sender;
     // }
-    function initialize() public initializer {
+    function initialize(address _feeRecipient,address _seller) public initializer {
         admin = msg.sender;
+        seller = _seller;
+        feeRecipient = _feeRecipient;
+        feeRate = 10;
+
     }
     // 相当于记录不同货币的汇率
     function setPriceFeeds(address _tokenAddress, address _priceAddr) public {
@@ -70,7 +79,7 @@ contract NftAction is Initializable, UUPSUpgradeable {
             require(msg.sender == admin, "Only admin can create auctions");
             require(_duration >= 10, "duration must be greater than 0");
             require(_startPrice > 0, "startPrice must be greater than 0");
-            IERC721(_nftContract).safeTransferFrom(msg.sender, address(this), _nftToken);
+            IERC721(_nftContract).safeTransferFrom(seller, address(this), _nftToken);
         nftActions[nextNftActionId] = Action({
             salter: msg.sender,
             duration: _duration,
@@ -101,7 +110,20 @@ contract NftAction is Initializable, UUPSUpgradeable {
         nftAction.isEnd = true;
         // nft转移到最高出价者
         if(nftAction.highestBidder != address(0)) {
+            uint256 fee = (nftAction.highestBid * feeRate) / 1000;
+            uint256 payValue = nftAction.highestBid - fee;
             IERC721(nftAction.nftContract).safeTransferFrom(address(this), nftAction.highestBidder, nftAction.nftToken);
+            if(nftAction.tokenAddress == address(0)) {
+                // eth支付
+                payable(feeRecipient).transfer(fee);
+                payable(nftAction.salter).transfer(payValue);
+
+            } else {
+                // IERC20支付
+                IERC20(nftAction.tokenAddress).transfer(nftAction.salter, payValue);
+                IERC20(nftAction.tokenAddress).transfer(feeRecipient, fee);
+
+            }
         } else {
             // 没有买家，nft转移到卖家
             IERC721(nftAction.nftContract).safeTransferFrom(address(this), nftAction.salter, nftAction.nftToken);
@@ -177,6 +199,10 @@ contract NftAction is Initializable, UUPSUpgradeable {
     function _authorizeUpgrade(address) internal view override {
         // 只有管理员可以升级合约
         require(msg.sender == admin, "Only admin can upgrade");
+    }
+
+    function onERC721Received(address, address, uint256, bytes calldata) external pure override returns (bytes4) {
+        return IERC721Receiver.onERC721Received.selector;
     }
 
 }

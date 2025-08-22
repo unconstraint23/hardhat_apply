@@ -8,8 +8,12 @@ module.exports = {
   solidity: "0.8.28",
   namedAccounts: {
      deployer: 0,
-    user1: 1,
-    user2: 2,
+     seller: {
+      default: 1,
+    },
+    buyer: {
+      default: 2,
+    }
 
   }
 };

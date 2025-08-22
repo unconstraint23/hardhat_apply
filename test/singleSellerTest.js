@@ -44,11 +44,18 @@ async function main() {
     
     
     // 买家购买
-    await nftAction.connect(buyer).placeBid(0, {
-        value: ethers.parseEther('2000'),
-    })
+    await nftAction.connect(buyer).placeBid(
+        0,
+        ethers.parseEther('2000'), 
+        ethers.ZeroAddress,
+        { value: ethers.parseEther('2000')}
+
+    )
     
-    await new Promise((resolve) => setTimeout(resolve, 10 * 1000))
+    // await new Promise((resolve) => setTimeout(resolve, 10 * 1000))
+    // 用 hardhat evm 快进 10 秒，而不是 setTimeout
+    await ethers.provider.send("evm_increaseTime", [10]);
+    await ethers.provider.send("evm_mine");
 
    await nftAction.connect(seller).endNftAction(0)
    const GAS_TOLERANCE = ethers.parseUnits("0.1", "ether"); // 0.1 ETH 容忍度
