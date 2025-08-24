@@ -7,7 +7,15 @@ describe('NftActionSeller', () => {
       await main()
     })
 })
+async function getGasCost(tx) {
+    const receipt = await tx.wait(); // tx 必须是 TransactionResponse
+    const gasUsed = receipt.gasUsed;               // BigInt
+    const gasPrice = receipt.gasPrice;    // BigInt
+    console.log('gasUsed:', gasUsed, typeof gasUsed)
+    console.log('gasPrice:', gasPrice, typeof gasPrice)
 
+    return gasUsed * gasPrice;                     // wei
+}
 
 async function main() {
 
@@ -38,41 +46,64 @@ async function main() {
         ethers.parseEther('1000'),
         testERC721Address,
         tokenId,
+        seller.address,
+
     )
     const actionRes = await nftAction.nftActions(0)
     console.log('拍卖创建成功:', actionRes)
     
-    
+        console.log("买家信息", buyer.address, buyer.balance)
+
     // 买家购买
-    await nftAction.connect(buyer).placeBid(
+    const buyTx = await nftAction.connect(buyer).placeBidForEth(
+
         0,
         ethers.parseEther('2000'), 
         ethers.ZeroAddress,
         { value: ethers.parseEther('2000')}
 
     )
+    /**
+     * 不 执行await bidTx.wait()，那交易虽然发出去了，但 还没真正打包进区块。
+        后面立刻调用 endNftAction，很可能报错（因为链上状态还没更新）。
+     */
+
+  const gasCostBuyer = await getGasCost(buyTx)
+    
+
     
     // await new Promise((resolve) => setTimeout(resolve, 10 * 1000))
     // 用 hardhat evm 快进 10 秒，而不是 setTimeout
     await ethers.provider.send("evm_increaseTime", [10]);
     await ethers.provider.send("evm_mine");
 
-   await nftAction.connect(seller).endNftAction(0)
+    const endTx = await nftAction.connect(seller).endNftAction(0)
+    //   容忍度
+  const endGasCost = await getGasCost(endTx)
+    
+
    const GAS_TOLERANCE = ethers.parseUnits("0.1", "ether"); // 0.1 ETH 容忍度
     const actionRes2 = await nftAction.nftActions(0)
     console.log('actionRes2:', actionRes2)
     const deployerBalance = await ethers.provider.getBalance(deployer);
     const sellerBalance = await ethers.provider.getBalance(seller);
     const buyerBalance = await ethers.provider.getBalance(buyer);
-    console.log('deployerBalance:', ethers.formatEther(String(deployerBalance)))
-    console.log('sellerBalance:', ethers.formatEther(String(sellerBalance)))
-    console.log('buyerBalance:', ethers.formatEther(String(buyerBalance)))
-    // deployer 获得手续费
-    expect(deployerBalance).to.be.closeTo(ethers.parseEther('10200'), GAS_TOLERANCE)
+    console.log('deployerBalance:', Number(ethers.formatEther(String(deployerBalance))))
+    console.log('sellerBalance:', Number(ethers.formatEther(String(sellerBalance))))
+    console.log('buyerBalance:', Number(ethers.formatEther(String(buyerBalance))))
+    console.log('gasCostBuyer:', Number(ethers.formatEther(String(gasCostBuyer))) * 10)
+    console.log('endGasCost:', Number(ethers.formatEther(String(endGasCost))) * 10)
+
+    // deployer 获得手续费 1 ETH = 10^18 wei ethers.parseEther ---> 单位是wei
+    expect(Number(ethers.formatEther(deployerBalance))).to.be.closeTo(10200, Number(ethers.formatEther(gasCostBuyer + endGasCost)) * 100)
+
     // 卖家获得
-    expect(sellerBalance).to.be.closeTo(ethers.parseEther('11800'), GAS_TOLERANCE)
+    expect(Number(ethers.formatEther(sellerBalance))).to.be.closeTo(11800, Number(ethers.formatEther(endGasCost)) * 100)
+
+
     // 买家获得
-    expect(buyerBalance).to.be.closeTo(ethers.parseEther('8000'), GAS_TOLERANCE)
+    expect(Number(ethers.formatEther(buyerBalance))).to.be.closeTo(8000, Number(ethers.formatEther(gasCostBuyer)) * 100)
+
 
 
     // expect(actionRes2.highestBidder).to.equal(buyer.address)

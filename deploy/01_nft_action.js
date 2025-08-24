@@ -6,7 +6,8 @@ const cacheDir = path.join(__dirname, ".cache");
 module.exports = async ({getNamedAccounts, deployments}) => {
   const { save } = deployments;
   const {deployer, seller} = await getNamedAccounts();
-  console.log('deployer:', deployer)
+  console.log('deployer:', deployer, "seller:", seller)
+
   const nftAction = await ethers.getContractFactory('NftAction')
   const nftActionContractProxy = await upgrades.deployProxy(nftAction, [deployer, seller], {
 

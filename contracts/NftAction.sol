@@ -11,9 +11,10 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 contract NftAction is Initializable, UUPSUpgradeable, IERC721Receiver {
 
 
+    event RecordBalances(address seller, uint256 sellerBalance, address feeRecipient, uint256 fee);
 
     struct Action {
-        address salter;
+        address seller;
         uint256 duration;
         uint256 startPrice;
         
@@ -73,15 +74,15 @@ contract NftAction is Initializable, UUPSUpgradeable, IERC721Receiver {
         uint256 _duration, 
         uint256 _startPrice,
         address _nftContract,
-        uint256 _nftToken
-
+        uint256 _nftToken,
+        address _sellerAddress
         ) public {
             require(msg.sender == admin, "Only admin can create auctions");
             require(_duration >= 10, "duration must be greater than 0");
             require(_startPrice > 0, "startPrice must be greater than 0");
             IERC721(_nftContract).safeTransferFrom(seller, address(this), _nftToken);
         nftActions[nextNftActionId] = Action({
-            salter: msg.sender,
+            seller: _sellerAddress,
             duration: _duration,
             startPrice: _startPrice,
             startTime: block.timestamp,
@@ -104,44 +105,54 @@ contract NftAction is Initializable, UUPSUpgradeable, IERC721Receiver {
             nftAction.startTime,
             nftAction.duration,
             block.timestamp
+
         );
+        console.log('nftAction.highestBid:', nftAction.highestBid, nftAction.highestBidder);
+
         require(!nftAction.isEnd && block.timestamp >= nftAction.startTime + nftAction.duration, "nftAction is not end");
 
         nftAction.isEnd = true;
+       
         // nft转移到最高出价者
         if(nftAction.highestBidder != address(0)) {
-            uint256 fee = (nftAction.highestBid * feeRate) / 1000;
-            uint256 payValue = nftAction.highestBid - fee;
+            uint256 fee = (nftAction.highestBid * feeRate) / 100;
+            uint256 payValue = IERC20(nftAction.tokenAddress).balanceOf(address(this)) - fee;
+            console.log('fee:', fee, 'payValue:', payValue);
+            console.log("tokenAddress", nftAction.tokenAddress);
+
             IERC721(nftAction.nftContract).safeTransferFrom(address(this), nftAction.highestBidder, nftAction.nftToken);
             if(nftAction.tokenAddress == address(0)) {
                 // eth支付
                 payable(feeRecipient).transfer(fee);
-                payable(nftAction.salter).transfer(payValue);
+                payable(nftAction.seller).transfer(payValue);
 
             } else {
+                console.log("contract balance:", IERC20(nftAction.tokenAddress).balanceOf(address(this)));
                 // IERC20支付
-                IERC20(nftAction.tokenAddress).transfer(nftAction.salter, payValue);
                 IERC20(nftAction.tokenAddress).transfer(feeRecipient, fee);
+                IERC20(nftAction.tokenAddress).transfer(nftAction.seller, payValue);
+                emit RecordBalances(nftAction.seller, IERC20(nftAction.tokenAddress).balanceOf(nftAction.seller), feeRecipient, fee);
+                console.log("seller balance:", IERC20(nftAction.tokenAddress).balanceOf(nftAction.seller));
+                console.log("feeRecipient balance:", IERC20(nftAction.tokenAddress).balanceOf(feeRecipient)); 
+                console.log("seller address", nftAction.seller);
+                console.log("feeRecipient address", feeRecipient);
 
             }
         } else {
+
             // 没有买家，nft转移到卖家
-            IERC721(nftAction.nftContract).safeTransferFrom(address(this), nftAction.salter, nftAction.nftToken);
+            IERC721(nftAction.nftContract).safeTransferFrom(address(this), nftAction.seller, nftAction.nftToken);
         }
 
     }
 
     function getPayValue(address _tokenAddress, uint256 amount) internal view returns (uint) {
-         uint payValue;
-        if(_tokenAddress == address(0)) {
-            amount = msg.value;
-
-            payValue = amount * uint(getChainlinkDataFeedLatestAnswer(address(0)));
-
-        } else {
-            payValue = amount * uint(getChainlinkDataFeedLatestAnswer(_tokenAddress));
-        }
-        return payValue;
+             AggregatorV3Interface  feedAddress = priceFeeds[_tokenAddress];  
+            uint8 decimals = feedAddress.decimals();
+             int256 price = getChainlinkDataFeedLatestAnswer(_tokenAddress);
+            uint256 adjustedPrice = uint256(price) * 1e8;
+        
+        return amount * adjustedPrice / 1e8;
     }
 
     /**
@@ -149,7 +160,40 @@ contract NftAction is Initializable, UUPSUpgradeable, IERC721Receiver {
      ETH 出价 → 因为 ETH 没有合约地址，就统一约定 _tokenAddress == address(0) 来表示「这是原生 ETH 出价」
      */
     // 买家操作
-    function placeBid(
+    function placeBidForEth(
+        uint256 _nftActionId, 
+        uint256 amount,
+        address _tokenAddress
+        ) public payable {
+        Action storage nftAction = nftActions[_nftActionId];
+
+       amount = msg.value;
+
+        require(!nftAction.isEnd && block.timestamp < nftAction.startTime + nftAction.duration, "nftAction is end");
+      
+        
+        require(amount > nftAction.highestBid && amount >= nftAction.startPrice, "bid must be greater than highestBid");
+        
+
+
+        
+
+        if(nftAction.highestBid > 0) {
+            payable(nftAction.highestBidder).transfer(nftAction.highestBid);
+        }
+        
+
+
+
+       
+
+        nftAction.highestBid = msg.value;
+        nftAction.highestBidder = msg.sender;
+        nftAction.tokenAddress = _tokenAddress;
+
+    }
+
+ function placeBid(
         uint256 _nftActionId, 
         uint256 amount,
         address _tokenAddress
@@ -160,17 +204,25 @@ contract NftAction is Initializable, UUPSUpgradeable, IERC721Receiver {
 
         require(!nftAction.isEnd && block.timestamp < nftAction.startTime + nftAction.duration, "nftAction is end");
       
-        
-        uint payValue = getPayValue(_tokenAddress, amount);
+        // console.log('startPrice:', nftAction.startPrice, "highestBidder", nftAction.highestBidder);
+        uint payValue;
+        if(_tokenAddress == address(0)) {
+            payValue = getPayValue(_tokenAddress, msg.value);
+        } else {
+            payValue = getPayValue(_tokenAddress, amount);
+
+        }
+
         uint highestBid = getPayValue(nftAction.tokenAddress, nftAction.highestBid);
         uint startPrice = getPayValue(nftAction.tokenAddress, nftAction.startPrice);
+        // console.log('payValue:', payValue, 'highestBid:', highestBid);
+        // console.log("pay:", payValue > highestBid);
+
         require(payValue > highestBid && payValue >= startPrice, "bid must be greater than highestBid");
         if(_tokenAddress != address(0)) {
             // 检查合约是否有足够的 ERC20 资产
-            uint shouldPayValue = getPayValue(_tokenAddress, IERC20(_tokenAddress).balanceOf(address(this)));
-
-            require(shouldPayValue >= payValue, "insufficient balance in current contract");
-            IERC20(_tokenAddress).transferFrom(msg.sender, address(this), payValue);
+            
+            IERC20(_tokenAddress).transferFrom(msg.sender, address(this), amount);
 
 
         }
@@ -190,12 +242,16 @@ contract NftAction is Initializable, UUPSUpgradeable, IERC721Receiver {
 
 
        
-
-        nftAction.highestBid = msg.value;
+        if(_tokenAddress == address(0)) {
+            nftAction.highestBid = msg.value;
+        } else {
+            nftAction.highestBid = amount;
+        }
         nftAction.highestBidder = msg.sender;
         nftAction.tokenAddress = _tokenAddress;
 
     }
+
     function _authorizeUpgrade(address) internal view override {
         // 只有管理员可以升级合约
         require(msg.sender == admin, "Only admin can upgrade");
