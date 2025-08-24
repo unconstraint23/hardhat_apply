@@ -20,7 +20,7 @@ async function getGasCost(tx) {
 
 async function main() {
 
-    const [deployer ,seller, buyer] = await ethers.getSigners();
+    const [deployer ,seller, buyer, buyer2] = await ethers.getSigners();
     await deployments.fixture(["deployNftAction"]);
     const nftActionProxy = await deployments.get('NftActionProxy')
      const nftAction = await ethers.getContractAt("NftAction", nftActionProxy.address);
@@ -39,12 +39,19 @@ async function main() {
     // 给购买者分点币用来测试
     let tx = await testERC20.connect(deployer).transfer(buyer.address, ethers.parseEther('1000'));
      await testERC20.connect(deployer).transfer(seller.address, ethers.parseEther("1000"));
+     await testERC20.connect(deployer).transfer(buyer2.address, ethers.parseEther("1000"));
     await tx.wait();
      // 确认余额
     const buyerBal = await testERC20.balanceOf(buyer.address);
     const sellerBal = await testERC20.balanceOf(seller.address);
+    const buyer2Bal = await testERC20.balanceOf(buyer2.address);
     console.log("Buyer balance:", ethers.formatEther(buyerBal));
     console.log("Seller balance:", ethers.formatEther(sellerBal));
+    console.log("Buyer2 balance:", ethers.formatEther(buyer2Bal), buyer2.address);
+     const MockCCIP = await ethers.getContractFactory("MockCCIP");
+     let ccip = await MockCCIP.connect(deployer).deploy()
+
+    await ccip.waitForDeployment()
     const aggreagatorV3 = await ethers.getContractFactory("AggreagatorV3")
    
     const priceFeedEthDeploy = await aggreagatorV3.deploy(10000)
@@ -93,7 +100,7 @@ async function main() {
     console.log('beforeBuyer:', beforeBuyer)
     console.log('beforeSeller:', beforeSeller)
     console.log('beforeUSDC:', beforeUSDC)
-
+  
     // 买家购买 eth购买
    tx = await nftAction.connect(buyer).placeBid(
     0, 
@@ -103,7 +110,6 @@ async function main() {
         value: ethers.parseEther('0.000012'),
     })
     await tx.wait()
-
    tx = await testERC20.connect(buyer).approve(nftActionProxy.address, ethers.MaxUint256)
    await tx.wait()
    tx = await nftAction.connect(buyer).placeBid(
@@ -111,7 +117,34 @@ async function main() {
     ethers.parseEther('2'),
     usdcAddress
    )
+   
    await tx.wait()
+
+//    模拟跨链出价（ETH）
+   let ccipEth = await ccip.sendMessage(
+      nftActionProxy.address,
+      nftAction.interface.encodeFunctionData("receiveCrossChainBid", [
+        0,
+        0,
+        ethers.ZeroAddress,
+        buyer2.address
+        ],
+    ),
+    { value: ethers.parseEther('0.000014') }  
+    );
+    ccipEth.wait()
+    // 模拟跨链出价（ERC20）
+  let ccipErc = await testERC20.connect(buyer2).approve(nftActionProxy.address, ethers.MaxUint256);
+   await ccipErc.wait() 
+   await ccip.sendMessage(
+      nftActionProxy.address,
+      nftAction.interface.encodeFunctionData("receiveCrossChainBid", [
+        0,
+        ethers.parseEther("4"),
+        usdcAddress,
+        buyer2.address
+      ])
+    );
 
    const gasCost = await getGasCost(tx)
     console.log('gasCost:', gasCost)
@@ -131,7 +164,7 @@ async function main() {
     const buyerBalance = await ethers.provider.getBalance(buyer);
     const usdcBalance = await testERC20.balanceOf(buyer.address)
     const sellerUsdc = await testERC20.balanceOf(seller.address);
-    const feeRecipientUsdc = await testERC20.balanceOf(feeRecipient);
+    const feeRecipientUsdc = await testERC20.balanceOf(deployer.address);
     console.log('deployerBalance:', deployerBalance)
     console.log('sellerBalance:', sellerBalance)
     console.log('buyerBalance:', buyerBalance)

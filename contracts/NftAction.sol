@@ -192,6 +192,65 @@ contract NftAction is Initializable, UUPSUpgradeable, IERC721Receiver {
         nftAction.tokenAddress = _tokenAddress;
 
     }
+    // CCIP 回调模拟：跨链出价
+    function receiveCrossChainBid(
+        uint256 actionId,
+        uint256 amount,
+        address _tokenAddress,
+        address _buyerAddress
+    ) public payable returns (bool) {
+     
+        console.log("_tokenAddress:", _tokenAddress, msg.value, amount);
+        Action storage nftAction = nftActions[actionId];
+        require(!nftAction.isEnd, "Auction ended");
+        require(amount > nftAction.highestBid, "Bid too low");
+
+         uint payValue;
+        if(_tokenAddress == address(0)) {
+            payValue = getPayValue(_tokenAddress, msg.value);
+        } else {
+            payValue = getPayValue(_tokenAddress, amount);
+
+        }
+
+        uint highestBid = getPayValue(nftAction.tokenAddress, nftAction.highestBid);
+        uint startPrice = getPayValue(nftAction.tokenAddress, nftAction.startPrice);
+        console.log('218payValue:', payValue, '218highestBid:', highestBid);
+      
+
+        require(payValue > highestBid && payValue >= startPrice, "bid must be greater than highestBid in ccip");
+        if(_tokenAddress != address(0)) {
+            // 检查合约是否有足够的 ERC20 资产
+            
+            IERC20(_tokenAddress).transferFrom(msg.sender, address(this), amount);
+
+
+        }
+
+        if(nftAction.highestBid > 0) {
+            // 判断是否是ERC20资产
+            if (_tokenAddress == address(0)) {
+                payable(nftAction.highestBidder).transfer(nftAction.highestBid);
+
+            } else {
+                IERC20(_tokenAddress).transfer(nftAction.highestBidder, nftAction.highestBid);
+
+            }
+        }
+        
+
+
+
+       
+        if(_tokenAddress == address(0)) {
+            nftAction.highestBid = msg.value;
+        } else {
+            nftAction.highestBid = amount;
+        }
+        nftAction.highestBidder = _buyerAddress;
+        nftAction.tokenAddress = _tokenAddress;
+        return true;
+    }
 
  function placeBid(
         uint256 _nftActionId, 
@@ -204,7 +263,8 @@ contract NftAction is Initializable, UUPSUpgradeable, IERC721Receiver {
 
         require(!nftAction.isEnd && block.timestamp < nftAction.startTime + nftAction.duration, "nftAction is end");
       
-        // console.log('startPrice:', nftAction.startPrice, "highestBidder", nftAction.highestBidder);
+        console.log('_tokenAddress:', _tokenAddress, "highestBidder", nftAction.highestBidder);
+        console.log("267highestBid:", nftAction.highestBid);
         uint payValue;
         if(_tokenAddress == address(0)) {
             payValue = getPayValue(_tokenAddress, msg.value);
@@ -249,7 +309,7 @@ contract NftAction is Initializable, UUPSUpgradeable, IERC721Receiver {
         }
         nftAction.highestBidder = msg.sender;
         nftAction.tokenAddress = _tokenAddress;
-
+       
     }
 
     function _authorizeUpgrade(address) internal view override {
