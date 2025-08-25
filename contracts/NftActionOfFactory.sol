@@ -3,50 +3,61 @@ pragma solidity ^0.8.22;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "./NftActionSingle.sol";
 import "hardhat/console.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-contract NftActionFactory is Initializable {
+contract NftActionOfFactory is Initializable, UUPSUpgradeable {
+
 
     address public admin;
     address public feeRecipient;
-    uint256 public feeRate;
     address public seller;
-    address[] public allAuctions;
+   mapping(string => address) public auctionsAddressMap;
+
 
     event NewAuction(address indexed auction, address indexed seller, address nftContract, uint256 tokenId);
 
     function initialize(address _feeRecipient, address _seller) public initializer {
         admin = msg.sender;
         feeRecipient = _feeRecipient;
-        feeRate = 10;
         seller = _seller;
 
     }
 
     function createNftAction(
-        address _seller,
-        address nftContract,
-        uint256 tokenId,
+        string calldata _auctionId,
+        uint256 duration,
         uint256 startPrice,
-        uint256 duration
-    ) external returns(address) {
+        address nftContract,
+        uint256 nftToken,
+        address _seller
+
+    ) external {
+        require(auctionsAddressMap[_auctionId] == address(0), "Auction already exists");
+
         // 部署新的拍卖合约
         NftActionSingle auction = new NftActionSingle(
             _seller,
             nftContract,
-            tokenId,
+            nftToken,
             startPrice,
             duration,
             feeRecipient,
-            feeRate
+            10
         );
 
-        allAuctions.push(address(auction));
-
-        emit NewAuction(address(auction), seller, nftContract, tokenId);
-        return address(auction);
+        auctionsAddressMap[_auctionId] = address(auction);
+             IERC721(nftContract).safeTransferFrom(_seller, address(auction), nftToken);
+        emit NewAuction(address(auction), _seller, nftContract, nftToken);
     }
 
-    function getAllAuctions() external view returns(address[] memory) {
-        return allAuctions;
+    function getAuctionAddress(string calldata _auctionId) external view returns(address) {
+        return auctionsAddressMap[_auctionId];
     }
+   
+    function _authorizeUpgrade(address) internal view override {
+        require(msg.sender == admin, "Not admin");
+
+    }
+
+
 }
