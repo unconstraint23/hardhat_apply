@@ -132,7 +132,8 @@ async function main() {
     console.log('endGasCost:', endGasCost)
     const actionAddr2 = await nftAction.getAuctionAddress("0")
     const endRes = await ethers.getContractAt("NftActionSingle", actionAddr2)
-    console.log('endRes:', endRes)
+    console.log('endRes:',await endRes.getAddress())
+
 
     const deployerBalance = await ethers.provider.getBalance(deployer);
     const sellerBalance = await ethers.provider.getBalance(seller);
@@ -154,7 +155,19 @@ async function main() {
     expect(owner).to.equal(buyer.address)
     // 检查买家是否收到了NFT
     expect(await testERC721.ownerOf(tokenId)).to.equal(buyer.address);
+    const implmentAddress1 = await upgrades.erc1967.getImplementationAddress(nftActionProxy.address)
+        console.log('implmentAddress:', implmentAddress1)
+    // 升级合约，只是测试
+    await deployments.fixture(["deployNftActionTestV2"]);
 
+    const nftAuctionTest = await ethers.getContractAt(
+        "NftActionSingleupgradeTest",
+        nftActionProxy.address
+      );
+        const implmentAddress2 = await upgrades.erc1967.getImplementationAddress(nftActionProxy.address)
+        console.log('implmentAddress2:', implmentAddress2)
+    const hello = await nftAuctionTest.testHello()
+    console.log("hello::", hello);
 
 
 }

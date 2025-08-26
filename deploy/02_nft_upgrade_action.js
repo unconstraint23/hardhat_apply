@@ -1,36 +1,39 @@
-const { deployments, upgrades, ethers } = require("hardhat")
+const { upgrades, ethers } = require("hardhat")
 
 
 const fs = require("fs");
 const path = require("path");
 const cacheDir = path.join(__dirname, ".cache");
 module.exports = async ({getNamedAccounts, deployments}) => {
-//   const { save } = deployments;
-//   const {deployer} = await getNamedAccounts();
-//   console.log('deployer:', deployer)
-//   const nftActionV2 = await ethers.getContractFactory('NftActionV2')
-//     const storePath = path.resolve(__dirname, "./.cache/proxyNftAuction.json");
-//   const storeData = fs.readFileSync(storePath, "utf-8");
-//   const { nftProxyAddress, implmentAddress, abi } = JSON.parse(storeData);
-//   const nftActionContractV2 = await upgrades.upgradeProxy(
-//     nftProxyAddress, 
-//     nftActionV2,
-//     { call: "admin" }
-// )
-//     await nftActionContractV2.waitForDeployment()
-//     const nftProxyAddressV2 = await nftActionContractV2.getAddress()
+  const { save } = deployments;
+const {deployer} = await getNamedAccounts();
+  const storePath = path.resolve(__dirname, "./.cache/proxyNftAuctionFactory.json");
+  const storeData = fs.readFileSync(storePath, "utf-8");
+  const { nftProxyAddress, implmentAddress, abi } = JSON.parse(storeData);
+  console.log('nftProxyAddress:', nftProxyAddress, deployer)
+  
+  const NftActionSingleupgrade = await ethers.getContractFactory('NftActionSingleupgradeTest')
+
+
+  const NftActionSingleupgradeTestObj = await upgrades.upgradeProxy(
+    nftProxyAddress, 
+    NftActionSingleupgrade
+)
+    await NftActionSingleupgradeTestObj.waitForDeployment()
+    const nftProxyAddressV2 = await NftActionSingleupgradeTestObj.getAddress()
+  console.log('nftProxyAddressV2:', nftProxyAddressV2)
 
 
 
 
 
-// await save('NftActionProxyV2', {
+await save('NftActionProxyTestV2', {
 
-//   address: nftProxyAddressV2,
-//   abi,
+  address: nftProxyAddressV2,
+  abi,
 
-// })
+})
 
 
 };
-module.exports.tags = ['deployNftActionV2'];
+module.exports.tags = ['deployNftActionTestV2'];
